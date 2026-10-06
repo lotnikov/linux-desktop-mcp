@@ -145,6 +145,11 @@ def find_flatpak_application_files_root(command_tokens: list[str]) -> Path | Non
     return None
 
 
+def lowercaseTrunc(name: str) -> str:
+    """Normalize a string of any case to the same consistent truncated lower case"""
+    return re.sub(r"[-_./\\#+ ]", "", name).lower()
+    
+
 def find_native_program_roots(command_tokens: list[str]) -> list[Path]:
     """Directories worth searching for a non-Flatpak launcher's runtime files."""
     if not command_tokens:
@@ -161,12 +166,28 @@ def find_native_program_roots(command_tokens: list[str]) -> list[Path]:
         return []
 
     search_roots = [program_path.parent]
+
+    paths = (Path("/usr/lib"), Path("/usr/lib64"), Path("/opt"))
+    launchers = dict(
+        map(
+            lambda p: (p, dict(map(
+                lambda d: (lowercaseTrunc(d), p / d), 
+                [d for d in os.listdir(p) if (p / d).is_dir]
+            ))), 
+            paths
+        )
+    )
+    
     # Distro packages commonly put the wrapper in /usr/bin and the runtime in
     # /usr/lib/<name> or /opt/<name>.
-    for library_parent in (Path("/usr/lib"), Path("/usr/lib64"), Path("/opt")):
+    for library_parent in paths:
         candidate = library_parent / program_path.name
-        if candidate.is_dir():
-            search_roots.append(candidate)
+
+        launcher = launchers[library_parent].get(lowercaseTrunc(candidate.name))
+        if launcher is not None:
+            search_roots.append(launcher)
+            continue
+
     return search_roots
 
 
